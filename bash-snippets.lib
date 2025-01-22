@@ -1,0 +1,268 @@
+#!/usr/bin/env bash
+# bash-snippets.lib -- Bash-Snippets library
+#
+# Author: Essam 'https://github.com/e55am'
+# Repo: https://github.com/alexanderepstein/Bash-Snippets
+
+
+### Globals variables
+PROGRAM="${0##*/}"  # bash version of `basename'
+VERSION="$PROGRAM v1.23.0"
+UPSTREAM="https://github.com/alexanderepstein/Bash-Snippets"
+declare -i USAGE_LINE_COUNT=1	# number of lines from Help represent usage
+
+
+### Function declaration
+## library function prefixed with underscore '_' and in Camel_Case
+## use two blank lines and a function separator between each function declaration
+## each function declaration should have the following doc
+# . brief description
+# . Globals: global variables function relays on
+# . Inputs: argument(s) passed, else nothing
+# . Outputs: write to file, modifies global variable, else nothing
+# . Returns: function return(s) value, else nothing
+# each function should followed by `end of function FUNC_NAME'
+#
+#
+#
+# check if user have root permission
+#
+# Globals: nothing
+# Inputs: nothing
+# Outputs: nothing
+#
+# Returns:
+# 	0 (success) if root
+# 	1 (error) if non root
+_Check_User_Perm() {
+	[[ $EUID -eq 0 ]]
+}	# end of function _Check_User_Perm
+
+
+# check internet connection
+# Globals: PROGRAM
+# Inputs: nothing
+# Outputs: nothing
+#
+# Returns:
+# 	0 (success) on active internet connection
+# 	1 (error) if no active internet connection and exit
+_Check_Internet() {
+
+	ping -c 1 "example.org" &> /dev/null || {
+		_Echo_Err "$PROGRAM: no active internet connection"
+		exit 1
+	}
+
+}	# end of function _Check_Internet
+
+
+# check if dependencies installed, abort with error if any missing
+# exit with error if any dependencies missing
+#
+# Globals:
+# 	PROGRAM
+#
+# Inputs:
+# 	dependency: array of string dependencies
+#
+# Outputs: nothing
+# 
+# Returns:
+# 	0 (true): if all dependencies met
+# 	1 (false): on error and terminate the program
+_Check_If_All_Dep() {
+	missing_dep=""
+
+	for dependency in "$@"; do
+		command -v "$dependency" &> /dev/null || {
+			missing_dep="$missing_dep, $dependency"
+		}
+	done
+
+	[[ -n "$missing_dep" ]] && {
+		_Echo_Err "$PROGRAM: unmet dependencies: '$missing_dep' not found"
+		_Echo_Err "Abort"
+		exit 1
+	}
+	return 0
+
+}	# end of _Check_If_All_Dep
+
+
+# check if any of the dependencies installed, return first one
+# exit with error if any dependency found
+#
+# Globals:
+# 	PROGRAM
+#
+# Inputs:
+# 	dependency: array of string dependencies
+#
+# Outputs: nothing
+#
+# Returns:
+# 	dependency: first installed dependency met
+# 	1 (error) if any dependency met and terminate the program
+_Check_For_Any_Dep() {
+
+	available_dep=
+	missing_dep=
+
+	for dependency in "$@"; do
+		if command -v "$dependency" &> /dev/null; then
+			available_dep="$dependency"
+			break
+		else
+			missing_dep="$missing_dep, $dependency"
+		fi
+	done
+
+	[[ -z "$available_dep" ]] && {
+		# remove first delimiter `, ' from missing_dep string
+		missing_dep="${missing_dep:2:${#missing_dep}}"  # slice from second char to the end
+		_Echo_Err "$PROGRAM: could not find any of the following dependencies '$missing_dep'"
+		_Echo_Err "Abort"
+		exit 1
+	}
+	echo "$available_dep"
+
+}	# end of function _Check_For_Any_Dep
+
+
+# set the default command that will be used to make HTTP GET request
+# if no client found, exit with error
+#
+# Globals:
+# 	PROGRAM
+#
+# Inputs: nothing
+#
+# Outputs:
+# 	_HTTP_GET function
+#
+# Returns:
+# 	1 (false) if no client installed and terminate the program
+_Config_HTTP_Client() {
+
+	dependency=$(_Check_For_Any_Dep "curl" "wget" "http" "fetch")
+	case $dependency in
+		curl )
+			_HTTP_GET() { curl --user-agent curl --silent "$*"; }
+		;;
+
+		wget ) 
+ 			_HTTP_GET() { wget --quiet --output-document - "$*"; }
+		;;
+
+		http ) 
+ 			_HTTP_GET() { http -b GET "$*"; }
+		;;
+
+		# TODO
+		# remove this case
+		* )
+			_Echo_Err "$PROGRAM: missing dependency: curl, wget, httpie or fetch not found!"
+			exit 1
+		;;
+	esac
+
+}	# end of function _Config_HTTP_Client
+
+
+# display try help message, used after user error
+#
+# Globals:
+# 	PROGRAM
+#
+# Inputs: nothing
+# Outputs: nothing
+# Returns: nothing
+_Try_Help() {
+	echo "Try '$PROGRAM -h' for more information"
+} >&2	# end of function try_help
+
+
+# print string to stderr
+#
+# Globals: nothing
+#
+# Inputs:
+# 	string
+#
+# Outputs: nothing
+# Returns: nothing
+_Echo_Err() {
+	echo "$*"
+} >&2	# end of function _Echo_Err
+
+
+# extract version from VERSION variable
+#
+# Globals:
+# 	VERSION
+#
+# Inputs: nothing
+# Outputs: nothing
+#
+# Returns:
+# 	version string
+_Extract_Version() {
+
+	echo "$VERSION" | grep --perl-regexp --only-matching '\d+.\d+.\d+'
+
+}	# end of function _Extract_Version
+
+
+# TODO
+# implement
+# update bash-snippets scripts/tools
+_Update() {
+
+	_Echo_Err "$PROGRAM: update functionality is not implement it yet"
+	exit 127
+}	# end of function _Update
+
+
+# access property from json (response)
+#
+# Globals: nothing
+#
+# Inputs:
+# 	data: json data
+# 	filter: filter string (read man 1 jq) for more information)
+#
+# Outputs: nothing
+#
+# Returns:
+# 	empty string if filter not found in data, else matched data
+_Access_Json_Element() {
+
+	data="$1"
+	filter="$2"
+
+	res=$(echo "$data" | jq --raw-output --exit-status "$filter")
+	[[ $? -eq 0 ]] && echo "$res" || echo
+
+}	# end of function _Access_Json_Element
+
+
+# Print first n lines from help message
+#
+# Globals:
+# 	USAGE_LINE_COUNT
+#
+# Inputs: nothing
+#
+# Outputs:
+# 	brief help message to stdout
+#
+# Returns: nothing
+_Usage() {
+	USAGE_LINE_COUNT=${USAGE_LINE_COUNT:-1}
+	Help | head -n $USAGE_LINE_COUNT
+
+}	# End of function _Usage
+
+
+_Config_HTTP_Client
