@@ -13,7 +13,7 @@ If you've noticed a bug or have a question, search the <a href="https://github.c
 * To download the full source code after forking
 ```bash
 git clone https://github.com/yourusernamehere/Bash-Snippets
-```   
+```
 
 
 #### 2. Implement your fix, feature or new component
@@ -45,3 +45,76 @@ If there are none submit the request and give details as to what you changed or 
 
 #### 5. Bask In All The Glory Of Adding To A FOSS Application
 ![Had to do it to em](https://68.media.tumblr.com/2dfc3369827df9b981e111d7fd8fc732/tumblr_mvemcyarmn1rslphyo1_400.gif)
+
+
+# Style Guide
+## *Before* contributing, please implement the following style guidelines
+
+## Function
+
+function declaration should be in Camel_Case, and library function declaration should prefixed with underscore '_'
+use two blank lines separator between each function declaration
+
+Each function declaration should have the following comment documentation
+
+1. brief description
+2. Globals: global variables function relays on
+3. Inputs: argument(s) passed, else nothing
+4. Outputs: write to file, modifies global variable, else nothing
+5. Returns: function return(s) value, else nothing
+
+Each function should followed by 'end of function FUNC_NAME'
+
+
+### Example:
+
+The following example declare shared function `Foo`
+
+```sh
+# print Foo n times
+# Globals: nothing
+#		leave blank line for readability
+# Inputs:
+# 	n: number of times to print 'Foo'
+#
+# Outputs: nothing
+# Returns: nothing
+_Foo() {
+
+	# leave one blank line after openening and before closing curly bracket
+	n="$1"	# variable declaration/assignment should placed at the beginning
+
+	# function body
+	while (( n-- )); do
+		echo "Foo"
+	done
+
+}	# end of function _Foo
+
+
+```
+
+## Variable
+
+predefined global variables should placed at the beginning of script in ALL_CAPS
+
+local variables in lower_case
+
+you should place variables declaration at start the start of function or code block
+
+
+### Example:
+
+```sh
+if $bar; then
+	i=1
+	j=3
+
+	echo "\$i: i\t\$j: $j"
+fi
+```
+
+> [!NOTE]
+> - By default variables in bash are global, except when you declare them otherwise with `local bar` or `declare bar`
+> - Please use tabs instead of whitespace for indentation
+
