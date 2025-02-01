@@ -1,236 +1,163 @@
 #!/usr/bin/env bash
 # Author: Alexander Epstein https://github.com/alexanderepstein
-currentVersion="1.23.0"
-configuredClient=""
-artist="false"
-song="false"
-filePath=""
 
-## This function determines which http get tool the system has installed and returns an error if there isnt one
-getConfiguredClient()
-{
-  if  command -v curl &>/dev/null; then
-    configuredClient="curl"
-  elif command -v wget &>/dev/null; then
-    configuredClient="wget"
-  elif command -v http &>/dev/null; then
-    configuredClient="httpie"
-  elif command -v fetch &>/dev/null; then
-    configuredClient="fetch"
-  else
-    echo "Error: This tool requires either curl, wget, httpie or fetch to be installed." >&2
-    return 1
-  fi
-}
+### Global vars
+# Get the directory path where the current script is located
+DIRECTORY="${0%/*}"
+LIB="bash-snippets.lib"
 
-getConfiguredPython()
-{
-  if command -v python3 &>/dev/null; then
-    configuredPython="python3"
-  elif  command -v python2 &>/dev/null; then
-    configuredPython="python2"
-  elif command -v python &>/dev/null; then
-    configuredPython="python"
-  else
-    echo "Error: This tool requires python to be installed."
-    return 1
-  fi
-}
+ERR=0	# exit status
 
-if [[ $(uname) != "Darwin" ]]; then
-  python()
-  {
-    case "$configuredPython" in
-      python3) python3 "$@" ;;
-      python2) python2 "$@" ;;
-      python)  python "$@" ;;
-    esac
-  }
-fi
-
-## Grabs an element from a a json string and then echoes it to stdout
-## $1 = the JSON string
-## $n+1 = the elements to be indexed
-AccessJsonElement() {
-  json="$1"
-  shift
-  accessor=""
-  for element in "$@"; do
-      accessor="${accessor}['$element']"
-  done
-  echo "$json" | python -c "from __future__ import print_function; import sys, json; print(json.load(sys.stdin)${accessor})" 2> /dev/null
-  return "$?"
+# source library, and exit on error
+source "$DIRECTORY/$LIB" || {
+	# don't use _Echo_Err; library not sourced!
+	echo "$PROGRAM: failed to source '$LIB' library" >&2
+	exit 3
 }
 
 
+### Function declaration
+#
+# get lyrics for song by artist
+#
+# Globals:
+# 	artist: artist name
+# 	song: song name
+#
+# Inputs: nothing
+#
+# Outputs:
+# 	lyrics: lyrics text
+#
+# Returns:
+# exit with error status if error occurred
+Get_Lyrics() {
 
-## Allows to call the users configured client without if statements everywhere
-httpGet()
-{
-  case "$configuredClient" in
-    curl)  curl -A curl -s "$@" ;;
-    wget)  wget -qO- "$@" ;;
-    httpie) http -b GET "$@" ;;
-    fetch) fetch -q "$@" ;;
-  esac
-}
+	# TODO
+	# better url encoding 
+	# https://stackoverflow.com/questions/11876353/url-encoding-a-string-in-bash-script
+	# only wget support url encoding
 
-update()
-{
-  # Author: Alexander Epstein https://github.com/alexanderepstein
-  # Update utility version 1.2.0
-  # To test the tool enter in the defualt values that are in the examples for each variable
-  repositoryName="Bash-Snippets" #Name of repostiory to be updated ex. Sandman-Lite
-  githubUserName="alexanderepstein" #username that hosts the repostiory ex. alexanderepstein
-  nameOfInstallFile="install.sh" # change this if the installer file has a different name be sure to include file extension if there is one
-  latestVersion=$(httpGet https://api.github.com/repos/$githubUserName/$repositoryName/tags | grep -Eo '"name":.*?[^\\]",'| head -1 | grep -Eo "[0-9.]+" ) #always grabs the tag without the v option
+	artist=$(echo "$artist" | sed -e 's/ /%20/g' -e 's/&/%26/g' -e 's/,/%2C/g' -e 's/-/%2D/g')
+	  song=$(  echo "$song" | sed -e 's/ /%20/g' -e 's/&/%26/g' -e 's/,/%2C/g' -e 's/-/%2D/g')
 
-  if [[ $currentVersion == "" || $repositoryName == "" || $githubUserName == "" || $nameOfInstallFile == "" ]]; then
-    echo "Error: update utility has not been configured correctly." >&2
-    exit 1
-  elif [[ $latestVersion == "" ]]; then
-    echo "Error: no active internet connection" >&2
-    exit 1
-  else
-    if [[ "$latestVersion" != "$currentVersion" ]]; then
-      echo "Version $latestVersion available"
-      echo -n "Do you wish to update $repositoryName [Y/n]: "
-      read -r answer
-      if [[ "$answer" == [Yy] ]]; then
-        cd ~ || { echo 'Update Failed'; exit 1; }
-        if [[ -d  ~/$repositoryName ]]; then rm -r -f $repositoryName || { echo "Permissions Error: try running the update as sudo"; exit 1; } ; fi
-        git clone "https://github.com/$githubUserName/$repositoryName" || { echo "Couldn't download latest version"; exit 1; }
-        cd $repositoryName || { echo 'Update Failed'; exit 1; }
-        git checkout "v$latestVersion" 2> /dev/null || git checkout "$latestVersion" 2> /dev/null || echo "Couldn't git checkout to stable release, updating to latest commit."
-        chmod a+x install.sh #this might be necessary in your case but wasnt in mine.
-        ./$nameOfInstallFile "update" || exit 1
-        cd ..
-        rm -r -f $repositoryName || { echo "Permissions Error: update succesfull but cannot delete temp files located at ~/$repositoryName delete this directory with sudo"; exit 1; }
-      else
-        exit 1
-      fi
-    else
-      echo "$repositoryName is already the latest version"
-    fi
-  fi
-}
+	response=$(_HTTP_GET "https://api.lyrics.ovh/v1/$artist/$song")
+	lyrics="$(_Access_Json_Element "$response" ".lyrics")"
 
-checkInternet()
-{
-  httpGet github.com > /dev/null 2>&1 || { echo "Error: no active internet connection" >&2; return 1; } # query github with a get request
-}
+	[[ $? -ne 0 ]] && { 
+		_Echo_Err "$(_Access_Json_Element "$response" ".error")"
+		exit 1
+	}
 
-getLyrics()
-{
-  encodedArtist=$(echo "$1" | sed s/" "/%20/g | sed s/"&"/%26/g | sed s/,/%2C/g | sed s/-/%2D/g)
-  encodedSong=$(echo "$2" | sed s/" "/%20/g | sed s/"&"/%26/g | sed s/,/%2C/g | sed s/-/%2D/g)
-  response=$(httpGet "https://api.lyrics.ovh/v1/$encodedArtist/$encodedSong")
-  lyrics="$(AccessJsonElement "$response" "lyrics" 2> /dev/null)"
-  if [[ $lyrics == "" ]];then { echo "Error: no lyrics found!"; return 1; }; fi
-}
+	Print_Lyrics
 
-printLyrics()
-{
-  if [[ $filePath == "" ]];then echo -e "$lyrics"
-  else
-    if [ -f "$filePath" ];then
-      echo -n "File already exists, do you want to overwrite it [Y/n]: "
-      read -r answer
-      if [[ "$answer" == [Yy] ]]; then
-        echo -e "$lyrics" > "$filePath";
-      fi
-    else
-        echo -e "$lyrics" > "$filePath";
-    fi
-   fi
-}
+}	# end of function Get_Lyrics
 
-usage()
-{
-  cat <<EOF
-Lyrics
-Description: Fetch lyrics for a certain song.
-Usage: lyrics [flags] or tool [-a] [arg] [-s] [arg]
-  -a  Artist of the song to fetch lyrics for
-  -s  Song of the artist to fetch lyrics for
-  -f  Export the lyrics to file rather than outputting to stdout
-  -u  Update Bash-Snippet Tools
-  -h  Show the help
-  -v  Get the tool version
-Examples:
-   lyrics -a logic -s run it
-   lyrics -a logic -s run it -f ~/runItLyrics.txt
-EOF
+
+# print lyrics
+#
+# Globals:
+# 	lyrics
+#
+# Inputs: nothing
+# Outputs: nothing
+# Returns: nothing
+Print_Lyrics() { echo -e "$lyrics"; }
+
+
+# print help message
+#
+# Globals:
+# 	PROGRAM
+#
+# Inputs: nothing
+# Outputs: nothing
+# Returns: nothing
+Help() {
+	cat <<- EOF
+	usage: $PROGRAM [-h|-u|-V] ARTIST SONG
+	Fetch lyrics for song title.
+
+	Mandatory positional arguments
+	  ARTIST: Artist name
+	    SONG: Song title
+
+	Options
+	  -h  display this help and exit
+	  -u  display synopsis/brief usage and exit
+	  -V  display tool version and exit
+
+	Note:
+	  arguments should be quoted
+	  e.g. \`$PROGRAM 'artist' 'song name with space'\`
+	EOF
 }
 
 
-while getopts "f:a:s:uvh" opt; do
-  case "$opt" in
-    \?) echo "Invalid option: -$OPTARG" >&2
-        exit 1
-        ;;
-    h)  usage
-        exit 0
-        ;;
-    v)  echo "Version $currentVersion"
-        exit 0
-        ;;
-    u)
-        getConfiguredClient || exit 1
-        checkInternet || exit 1
-        update
-        exit 0
-        ;;
-    f)
-       filePath="$OPTARG"
-        ;;
-    a)
-        artist="true"
-        if [[ "$(echo "$@" | grep -Eo "\-s")" == "-s" ]];then song="true";fi # wont go through both options if arg spaced and not quoted this solves that issue (dont need this but once had bug on system where it was necessary)
-        if [[ "$(echo "$@" | grep -Eo "\-f")" == "-f" ]];then filePath=$(echo "$@" | grep -Eo "\-f [ a-z A-Z / 0-9 . \ ]*[ -]?" | sed s/-f//g | sed s/-//g | sed s/^" "//g);fi
-      ;;
-    s)
-        song="true"
-        if [[ "$(echo "$@" | grep -Eo "\-a")" == "-a" ]];then artist="true";fi # wont go through both options if arg spaced and not quoted this solves that issue (dont need this but once had bug on system where it was necessary)
-        if [[ "$(echo "$@" | grep -Eo "\-f")" == "-f" ]];then filePath=$(echo "$@" | grep -Eo "\-f [ a-z A-Z / 0-9 . \ ]*[ -]?" | sed s/-f//g | sed s/-//g | sed s/^" "//g);fi
-      ;;
-    :)  echo "Option -$OPTARG requires an argument." >&2
-        exit 1
-        ;;
-  esac
+### Parse cli option
+while getopts ":-huV" opt; do
+	case "$opt" in
+		h ) Help; exit 0 ;;
+		u ) _Usage; exit 0 ;;
+		V ) echo "$VERSION"; exit 0 ;;
+
+		### parse long option
+		- )
+			case "$OPTARG" in
+				help ) Help; exit 0 ;;
+				usage ) _Usage; exit 0 ;;
+
+				* )
+					_Echo_Err "Invalid option '--$OPTARG'"
+					_Try_Help
+					exit 1
+				;;
+			esac
+		;;
+
+		: )
+			_Echo_Err "Option '-$OPTARG' requires an argument."
+			exit 1
+		;;
+
+		* )
+			_Echo_Err "$PROGRAM: Invalid option '-$OPTARG'"
+			_Try_Help
+			exit 1
+		;;
+	esac
 done
+shift $((OPTIND - 1))
 
-# special set of first arguments that have a specific behavior across tools
-if [[ $# == "0" ]]; then
-  usage ## if calling the tool with no flags and args chances are you want to return usage
-  exit 0
-elif [[ $# == "1" ]]; then
-  if [[ $1 == "update" ]]; then
-    getConfiguredClient || exit 1
-    checkInternet || exit 1
-    update || exit 1
-    exit 0
-  elif [[ $1 == "help" ]]; then
-    usage
-    exit 0
-  fi
-fi
 
-if ($artist && ! $song)  || ($song && ! $artist);then
-  echo "Error: the -a and the -s flag must be used to fetch lyrics."
-  exit 1
-elif $artist && $song;then
-  song=$(echo "$@" | grep -Eo "\-s [ a-z A-Z 0-9 . \ ]*[ -]?" | sed s/-s//g | sed s/-//g | sed s/^" "//g)
-  if [[ $song == "" ]];then { echo "Error: song could not be parsed from input."; exit 1; };fi
-  artist=$(echo "$@" | grep -Eo "\-a [ a-z A-Z 0-9 . \ ]*[ -]?" | sed s/-a//g | sed s/-//g | sed s/^" "//g)
-  if [[ $artist == "" ]];then { echo "Error: artist could not be parsed from input."; exit 1; };fi
-  getConfiguredClient || exit 1
-  if [[ $(uname) != "Darwin" ]]; then getConfiguredPython || exit 1;fi
-  checkInternet || exit 1
-  getLyrics "$artist" "$song" || exit 1
-  printLyrics
-else
-  { clear; echo "You shouldnt be here but maaaaaaybeee you slipped passed me, learn to use the tool!"; sleep 5; clear;}
-  usage
-  exit 1
-fi
+## check if missing mandatory command line arguments
+case $# in
+	0 )
+		_Echo_Err "$PROGRAM: missing artist name and song title"
+		ERR=1
+	;;
+
+	1 )
+		_Echo_Err "$PROGRAM: two few argument: missing artist name or title"
+		ERR=1
+	;;
+
+	2 ) artist="$1"; song="$2" ;;
+
+	* )
+		_Echo_Err "$PROGRAM: two many arguments"
+		ERR=1
+	;;
+esac
+
+[[ $ERR -ne 0 ]] && {
+	_Try_Help
+	exit $ERR
+}
+
+_Check_If_All_Dep "jq"
+_Check_Internet
+Get_Lyrics
+
+exit $ERR
+
