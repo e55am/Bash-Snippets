@@ -102,6 +102,7 @@ Get_Info() {
 	fi
 
 	Print_Info
+	unset keys values
 
 }	# end of function Get_Info
 
