@@ -10,7 +10,9 @@ DETAIL=false	# detailed output flag
 ERR=0	# exit status
 KEY_LEN=0	# longest key string length
 VAL_LEN=0
-NCOL=80	# output line width
+read _ NCOL < <(stty size)
+(( NCOL > 80 )) && NCOL=80
+
 
 
 # source library, and exit on error
@@ -125,7 +127,7 @@ Print_KV() {
 	key="$1"
 	val="$2"
 
-	line_format="%${KEY_LEN}s %-${NCOL}s\n"
+	line_format="% ${KEY_LEN}s %s\n"
 
 	# API response may contain 'null' as string or 'N/A', skip it
 	[[ "${val,,}" == "null" || "${val^^}" == "N/A" || -z "$val" ]] && return
@@ -134,9 +136,9 @@ Print_KV() {
 		printf "$line_format" "$key:" "$val"
 
 	else
-		printf "$line_format" "$key:" ' '
+		printf "$line_format" "$key:" ''
 		while IFS= read -r line; do
-			printf "$line_format" ' ' "$line"
+			printf "$line_format" '' "$line"
 		done < <(echo "$val" | fmt -w $VAL_LEN)
 	fi
 
@@ -162,7 +164,7 @@ Print_Info() {
 		len=${#key}
 		(( len > KEY_LEN )) && KEY_LEN=$len
 	done
-	KEY_LEN=$(( $KEY_LEN + 2 ))
+	KEY_LEN=$(( KEY_LEN + 2 ))
 	VAL_LEN=$(( NCOL - KEY_LEN ))
 
 	for i in ${!keys[@]}; do
