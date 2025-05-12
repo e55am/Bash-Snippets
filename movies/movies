@@ -8,11 +8,8 @@ LIB="bash-snippets.lib"
 
 DETAIL=false	# detailed output flag
 ERR=0	# exit status
-KEY_LEN=0	# longest key string length
-VAL_LEN=0
-read _ NCOL < <(stty size)
-(( NCOL > 80 )) && NCOL=80
-
+KEY_LEN=
+VAL_LEN=
 
 
 # source library, and exit on error
@@ -23,7 +20,34 @@ source "$DIRECTORY/$LIB" || {
 }
 
 
-# request movie info from OMDB API
+# set output width
+#
+# Globals:
+# 	KEY_LEN
+# 	VAL_LEN
+#
+# Input: nothing
+# Output:
+# 	KEY_LEN
+# 	VAL_LEN
+#
+# Returns: nothing
+Set_Output_Width() {
+
+	[[ -z "$KEY_LEN" || -z "$VAL_LEN" ]] || return
+
+	read _ NCOL < <(stty size)
+	(( NCOL > 80 )) && NCOL=80
+
+	# longest key is rotten_tomatoes_rating
+	s="rotten_tomatoes_rating"
+	KEY_LEN=$(( ${#s} + 2 ))
+	VAL_LEN=$(( NCOL - KEY_LEN ))
+
+} # end of function Set_Output_Width
+
+
+# fetch movie info from OMDB API
 #
 # Globals:
 # 	DETAIL
@@ -41,7 +65,7 @@ Get_Info() {
 
 	# we used two arrays instead of associate array because associate array are unsorted
 	declare -g -a keys values
-	
+
 	title="$(echo "$*" | tr ' ' '+')"
 
 	# please consider using your own API key
@@ -50,11 +74,12 @@ Get_Info() {
 	URL="http://www.omdbapi.com/?$PARAMETER"
 
 	response="$(_HTTP_GET "$URL")"
+	Set_Output_Width
 
 	# check api response, if response was false, Print Error and exit
 	check_res=$(_Access_Json_Element "$response" ".Response")
 	if [[ "$check_res" == "False" ]]; then
-		_Echo_Err $(Print_KV "Error" "$(_Access_Json_Element "$response" ".Error")")
+		Print_KV "Error" "$*: $(_Access_Json_Element "$response" ".Error")"
 		ERR=1
 		return
 	fi
@@ -114,7 +139,6 @@ Get_Info() {
 # Globals:
 # 	KEY_LEN
 # 	VAL_LEN
-# 	NCOL
 #
 # Inputs:
 # 	key
@@ -152,20 +176,9 @@ Print_KV() {
 # 	values
 #
 # Input: nothing
-# Output:
-# 	KEY_LEN
-# 	VAL_LEN
-#
+# Output: nothing
 # Returns: nothing
 Print_Info() {
-
-	# get the length of longest key
-	for key in "${keys[@]}"; do
-		len=${#key}
-		(( len > KEY_LEN )) && KEY_LEN=$len
-	done
-	KEY_LEN=$(( KEY_LEN + 2 ))
-	VAL_LEN=$(( NCOL - KEY_LEN ))
 
 	for i in ${!keys[@]}; do
 		key=${keys[$i]}
@@ -243,7 +256,11 @@ shift $(( OPTIND - 1 ))
 _Check_If_All_Dep "jq" "fmt"
 _Check_Internet
 
-for title in "$@"; do Get_Info "$title"; done
+for title in "$@"; do
+	Get_Info "$title"
+	# print blank line separator
+	[[ $# -gt 1 ]] && echo
+done
 
 exit $ERR
 
